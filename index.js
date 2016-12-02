@@ -1,11 +1,9 @@
-'use strict';
-
-var fs = require('fs');
-var emulator = require('./emulator');
-var join = require('path').join;
-var md5 = require('crypto').createHash('md5');
-var msgpack = require('msgpack');
-var debug = require('debug')('weplay:worker');
+import fs from 'fs';
+import emulator from './emulator';
+import {join} from 'path';
+const md5 = require('crypto').createHash('md5');
+import msgpack from 'msgpack';
+const debug = require('debug')('weplay:worker');
 
 if (!process.env.WEPLAY_ROM) {
     console.error('You must specify the ENV variable `WEPLAY_ROM` '
@@ -16,40 +14,40 @@ if (!process.env.WEPLAY_ROM) {
 process.title = 'weplay-emulator';
 
 // redis
-var redis = require('./redis')();
-var sub = require('./redis')();
-var io = require('socket.io-emitter')(redis);
+const redis = require('./redis')();
+const sub = require('./redis')();
+const io = require('socket.io-emitter')(redis);
 
 // rom
-var file = process.env.WEPLAY_ROM;
+let file = process.env.WEPLAY_ROM;
 if ('/' != file[0]) file = join(process.cwd(), file);
 console.log('rom %s', file);
-var rom = fs.readFileSync(file);
-var hash = md5.update(file).digest('hex');
+const rom = fs.readFileSync(file);
+const hash = md5.update(file).digest('hex');
 console.log('rom hash %s', hash);
 
 // save interval
-var saveInterval = process.env.WEPLAY_SAVE_INTERVAL || 60000;
+const saveInterval = process.env.WEPLAY_SAVE_INTERVAL || 60000;
 console.log('save interval %d', saveInterval);
 
 // load emulator
-var emu;
+let emu;
 
 function load() {
     console.log('loading emulator');
     emu = emulator();
 
-    emu.on('error', function () {
-        console.log(new Date + ' - restarting emulator');
+    emu.on('error', () => {
+        console.log(`${new Date} - restarting emulator`);
         emu.destroy();
         setTimeout(load, 1000);
     });
 
-    emu.on('frame', function (frame) {
+    emu.on('frame', frame => {
         redis.publish('weplay:frame:raw', frame);
     });
 
-    redis.get('weplay:state:' + hash, function (err, state) {
+    redis.get(`weplay:state:${hash}`, (err, state) => {
         if (err) throw err;
         if (state) {
             console.log('init from state');
@@ -64,12 +62,12 @@ function load() {
 
     function save() {
         console.log('will save in %d', saveInterval);
-        setTimeout(function () {
-            var snap = emu.snapshot();
+        setTimeout(() => {
+            const snap = emu.snapshot();
             if (snap) {
                 console.log('saving state');
-                redis.set('weplay:state:' + hash, msgpack.pack(snap));
-                redis.expire('weplay:state:' + hash, saveInterval);
+                redis.set(`weplay:state:${hash}`, msgpack.pack(snap));
+                redis.expire(`weplay:state:${hash}`, saveInterval);
                 save();
             }
         }, saveInterval);
@@ -77,7 +75,7 @@ function load() {
 }
 
 sub.subscribe('weplay:move');
-sub.on('message', function (channel, move) {
+sub.on('message', (channel, move) => {
     if ('weplay:move' != channel) return;
     emu.move(move.toString());
 });
