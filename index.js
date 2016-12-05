@@ -1,8 +1,10 @@
-import fs from 'fs';
-import emulator from './emulator';
-import {join} from 'path';
+'use strict';
+
+const fs = require('fs');
+const Emulator = require('./emulator');
+const join = require('path').join;
 const md5 = require('crypto').createHash('md5');
-import msgpack from 'msgpack';
+const msgpack = require('msgpack');
 const debug = require('debug')('weplay:worker');
 
 if (!process.env.WEPLAY_ROM) {
@@ -35,7 +37,7 @@ let emu;
 
 function load() {
     console.log('loading emulator');
-    emu = emulator();
+    emu = new Emulator();
 
     emu.on('error', () => {
         console.log(`${new Date} - restarting emulator`);

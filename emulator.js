@@ -1,8 +1,7 @@
 
-import gameboy from 'gameboy';
-import Canvas from 'canvas';
-import {EventEmitter as Emitter} from 'events';
-export default Emulator;
+const gameboy = require('gameboy');
+const Canvas = require('canvas');
+const Emitter = require('events').EventEmitter;
 
 class Emulator {
   constructor() {
@@ -66,3 +65,5 @@ class Emulator {
 }
 
 Emulator.prototype.__proto__ = Emitter.prototype;
+
+module.exports = Emulator;
