@@ -3,12 +3,15 @@
 const fs = require('fs');
 const Emulator = require('./emulator');
 const join = require('path').join;
-const md5 = require('crypto').createHash('md5');
+const crypto = require('crypto');
 const msgpack = require('msgpack');
 const debug = require('debug')('weplay:worker');
 
+const logger = require('weplay-common').logger('weplay-emulator');
+
+
 if (!process.env.WEPLAY_ROM) {
-    console.error('You must specify the ENV variable `WEPLAY_ROM` '
+    logger.error('You must specify the ENV variable `WEPLAY_ROM` '
         + 'pointint to location of rom file to broadcast.');
     process.exit(1);
 }
@@ -16,46 +19,54 @@ if (!process.env.WEPLAY_ROM) {
 process.title = 'weplay-emulator';
 
 // redis
-const redis = require('./redis')();
-const sub = require('./redis')();
-const io = require('socket.io-emitter')(redis);
+const redis = require('weplay-common').redis();
+const sub = require('weplay-common').redis();
+
+
+var digest = function (state) {
+    var md5 = crypto.createHash('md5');
+    return md5.update(state).digest('hex');
+};
 
 // rom
 let file = process.env.WEPLAY_ROM;
 if ('/' != file[0]) file = join(process.cwd(), file);
-console.log('rom %s', file);
+logger.info('rom %s', file);
 const rom = fs.readFileSync(file);
-const hash = md5.update(file).digest('hex');
-console.log('rom hash %s', hash);
+var romHash = digest(file);
+logger.info('rom hash %s', romHash);
 
 // save interval
 const saveInterval = process.env.WEPLAY_SAVE_INTERVAL || 60000;
-console.log('save interval %d', saveInterval);
+logger.info('save interval %d', saveInterval);
 
 // load emulator
 let emu;
 
-function load() {
-    console.log('loading emulator');
-    emu = new Emulator();
 
+
+function load() {
+    logger.info('loading emulator');
+    emu = new Emulator();
+    var frameCounter = 0;
     emu.on('error', () => {
-        console.log(`${new Date} - restarting emulator`);
+        logger.error('restarting emulator');
         emu.destroy();
         setTimeout(load, 1000);
     });
 
     emu.on('frame', frame => {
+        frameCounter++;
         redis.publish('weplay:frame:raw', frame);
     });
 
-    redis.get(`weplay:state:${hash}`, (err, state) => {
+    redis.get(`weplay:state:${romHash}`, (err, state) => {
         if (err) throw err;
         if (state) {
-            console.log('init from state');
+            logger.info('init from state', {state: digest(state)});
             emu.initWithState(msgpack.unpack(state));
         } else {
-            console.log('init from rom');
+            logger.info('init from rom');
             emu.initWithRom(rom);
         }
         emu.run();
@@ -63,13 +74,13 @@ function load() {
     });
 
     function save() {
-        console.log('will save in %d', saveInterval);
+        logger.info('will save in %d', saveInterval);
         setTimeout(() => {
             const snap = emu.snapshot();
             if (snap) {
-                console.log('saving state');
-                redis.set(`weplay:state:${hash}`, msgpack.pack(snap));
-                redis.expire(`weplay:state:${hash}`, saveInterval);
+                logger.info('saving state');
+                redis.set(`weplay:state:${romHash}`, msgpack.pack(snap));
+                redis.expire(`weplay:state:${romHash}`, saveInterval);
                 save();
             }
         }, saveInterval);
