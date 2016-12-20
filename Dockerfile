@@ -6,8 +6,6 @@ WORKDIR /usr/src/app/emulator
 
 COPY . .
 
-COPY rom.gbc .
-
 # Install build dependencies
 RUN apt-get update
 RUN apt-get install -y libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
@@ -19,8 +17,7 @@ RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install
 
 # Setup environment
-ENV WEPLAY_REDIS_URI "redis:$REDIS_PORT_6379_TCP_PORT"
-ENV WEPLAY_ROM  rom.gbc
+ENV WEPLAY_REDIS_URI "redis:6379"
 
 # Run
 CMD [ "node", "index.js" ]
