@@ -14,11 +14,14 @@ process.title = 'weplay-emulator';
 
 // redis
 const redis = require('weplay-common').redis();
-const sub = require('weplay-common').redis();
+const redisSub = require('weplay-common').redis();
 
+const EventBus = require('weplay-common').EventBus;
 
-var digest = function (state) {
-    var md5 = crypto.createHash('md5');
+let bus = new EventBus(redis, redisSub);
+
+const digest = state => {
+    const md5 = crypto.createHash('md5');
     return md5.update(state).digest('hex');
 };
 
@@ -28,18 +31,33 @@ const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000;
 
 // load emulator
 let emu;
-var romHash;
-var romData;
-var state;
-var loaded = false;
-var retryCount = 0;
-var saveInterval;
+let romHash;
+let romData;
+let state;
+let loaded = false;
+let retryCount = 0;
+let saveInterval;
+let running = false;
+let connections = 0;
+let destroyEmuTimeout;
+let destroyEmuTimeoutDelay = 10000;
 
+var saveState = function () {
+    if (emu) {
+        const snap = emu.snapshot();
+        if (snap) {
+            logger.info(`> weplay:state:${romHash}`);
+            const pack = msgpack.pack(snap);
+            bus.publish(`weplay:state:${romHash}`, pack);
+        }
+    }
+};
 function load() {
-    logger.info('loading emulator');
+    logger.debug('loading emulator');
     if (emu)emu.destroy();
     emu = new Emulator();
-    var frameCounter = 0;
+    let frameCounter = 0;
+
     emu.on('error', () => {
         logger.error('restarting emulator');
         emu.destroy();
@@ -48,8 +66,9 @@ function load() {
 
     emu.on('frame', frame => {
         frameCounter++;
-        redis.publish('weplay:frame:raw', frame);
-        redis.publish(`weplay:frame:raw:${romHash}`, frame);
+        //bus.publish('weplay:frame:raw', frame);
+        if (romHash)
+            bus.publish(`weplay:frame:raw:${romHash}`, frame);
     });
 
     if (state) {
@@ -59,96 +78,159 @@ function load() {
         logger.info('init from rom');
         emu.initWithRom(romData);
     }
+
     emu.run();
 
     logger.info('save delay %d', saveIntervalDelay);
 
     if (saveInterval)clearInterval(saveInterval);
     saveInterval = setInterval(() => {
-        const snap = emu.snapshot();
-        if (snap) {
-            logger.info('publishing state');
-            const pack = msgpack.pack(snap);
-            redis.publish(`weplay:state:${romHash}`, pack);
-        }
+        saveState();
     }, saveIntervalDelay); //saveIntervalDelay
-
+    running = true;
 }
 
-sub.psubscribe('weplay:move:*');
-sub.on('pmessage', (pattern, channel, move) => {
-    var room = channel.toString().split(":")[2];
-    if (room != romHash) return;
-    redis.get(`weplay:move-last:emu:${uuid}`, (err, last) => {
-        if (last) {
-            last = last.toString();
-            if (Date.now() - last < throttle) {
-                return;
-            }
-        }``
-        //logger.debug('move', {key: keys[key], move: key, socket: {nick: socket.nick, id: socket.id}});
-        redis.set(`weplay:move-last:emu:${uuid}`, Date.now());
 
-        logger.info('move', {move: move.toString()});
-        emu.move(move.toString());
-        redis.publish(`weplay:move-last:hash:${romHash}`, move.toString());
-    });
-
-});
-
-
-sub.subscribe(`weplay:emu:${uuid}:rom:data`);
-sub.on('message', (channel, rom) => {
-    if (`weplay:emu:${uuid}:rom:data` != channel) return;
+bus.subscribe(`weplay:emu:${uuid}:subscribe:done`, (channel, id) => {
+    logger.info(`< weplay:emu:${uuid}:subscribe:done`, {uuid: id.toString()});
     loaded = true;
-    logger.info(`weplay:emu:${uuid}:rom:data`, {romHash: romHash});
+    retryCount = 0;
+});
+
+bus.subscribe(`weplay:emu:${uuid}:rom:data`, (channel, rom) => {
+    logger.info(`< weplay:emu:${uuid}:rom:data`);
+    loaded = true;
+    logger.info(`weplay:emu:${uuid}:rom:data`, {romHash});
     romData = rom;
-    load();
 });
 
 
-sub.subscribe(`weplay:emu:${uuid}:rom:hash`);
-sub.on('message', (channel, serverRomHash) => {
-    if (`weplay:emu:${uuid}:rom:hash` != channel) return;
-    logger.info(`weplay:emu:rom:hash`, {romHash: serverRomHash.toString()});
-    romHash = serverRomHash.toString();
+bus.subscribe(`weplay:emu:${uuid}:rom:hash`, (channel, _romHash) => {
+    _romHash = _romHash.toString();
+    logger.info(`< weplay:emu:${uuid}:rom:hash`, {romHash: _romHash});
+    if (romHash !== _romHash) {
+        if (romHash)destroyListenRoomEvents();
+        romHash = _romHash;
+        listenRoomEvents();
+    }
 });
 
-sub.subscribe(`weplay:emu:${uuid}:rom:state`);
-sub.on('message', (channel, serverRomState) => {
-    if (`weplay:emu:${uuid}:rom:state` != channel) return;
+bus.subscribe(`weplay:emu:${uuid}:rom:state`, (channel, serverRomState) => {
+    logger.info(`< weplay:emu:${uuid}:rom:state`);
     loaded = true;
     state = serverRomState;
-    load();
 });
 
-sub.subscribe('weplay:discover:init');
-sub.on('message', (channel, id) => {
-    if ('weplay:discover:init' != channel) return;
-    logger.info('weplay:discover:init', {uuid: id});
+bus.subscribe('weplay:discover:init', (channel, id) => {
+    logger.info('< weplay:discover:init', {uuid: id.toString()});
     loaded = false;
     retryCount = 0;
-    romHash = undefined;
-    romData = undefined;
-    state = undefined;
     discover();
 });
 
-sub.subscribe(`weplay:emu:${uuid}:subscribe:done`);
-sub.on(`weplay:emu:${uuid}:subscribe:done`, (channel, id) => {
-    if (`weplay:emu:${uuid}:subscribe:done` != channel) return;
-    logger.info(`weplay:emu:subscribe:done`, {uuid: id});
-    loaded = true;
-    retryCount = 0;
-});
+
+var keepEmulatorRunning = function () {
+    if (!emu)load();
+};
+var destroyEmu = function () {
+    if (saveInterval)clearInterval(saveInterval);
+    if (!destroyEmuTimeout) {
+        destroyEmuTimeout = setTimeout(() => {
+            logger.debug('destroy emulator');
+            if (emu) {
+                saveState();
+                emu.destroy();
+                emu = undefined;
+            }
+            clearTimeout(destroyEmuTimeout);
+            destroyEmuTimeout = undefined;
+        }, destroyEmuTimeoutDelay);
+    }
+};
+var healthCheck = function () {
+    if (connections > 0) {
+        keepEmulatorRunning();
+    } else {
+        logger.debug('destroy emulator?');
+        if (emu) {
+            destroyEmu();
+        }
+    }
+};
+
+var checker = (channel, data) => {
+    const room = channel.toString().split(":")[2];
+    if (room !== romHash) return;
+
+    data = data.toString();
+    const action = channel.toString().split(":")[1];
+    switch (action) {
+        case 'join':
+            connections++;
+            logger.info(`< weplay:join:${romHash}`, {clientId: data, connections: connections});
+            break;
+        case 'leave':
+            connections = connections === 0 ? 0 : connections - 1;
+            logger.info(`< weplay:leave:${romHash}`, {clientId: data, connections: connections});
+            break;
+        case 'connections':
+            connections = data;
+            break;
+    }
+    healthCheck();
+};
+
+
+function destroyListenRoomEvents() {
+    logger.debug('destroyListenRoomEvents', romHash);
+    bus.unsubscribe(`weplay:move:${romHash}`);
+    bus.unsubscribe(`weplay:join:${romHash}`);
+}
+
+function listenRoomEvents() {
+    logger.debug('listenRoomEvents', romHash);
+    connections = 0;
+    bus.subscribe(`weplay:move:${romHash}`, (channel, move) => {
+        const room = channel.toString().split(":")[2];
+        if (!romHash || room != romHash || !emu || !move) return;
+        logger.debug(`> weplay:move:${romHash}`);
+        redis.get(`weplay:move-last:emu:${uuid}`, (err, last) => {
+            if (last) {
+                last = last.toString();
+                if (Date.now() - last < throttle) {
+                    return;
+                }
+            }
+            redis.set(`weplay:move-last:emu:${uuid}`, Date.now());
+
+            logger.info(`< weplay:move:${romHash}`, {move: move.toString()});
+            emu.move(move.toString());
+            bus.publish(`weplay:move-last:hash:${romHash}`, move.toString());
+        });
+
+    });
+
+
+    bus.subscribe(`weplay:join:${romHash}`, checker);
+    bus.subscribe(`weplay:leave:${romHash}`, checker);
+    bus.subscribe(`weplay:connections:${romHash}`, checker);
+
+}
 
 
 function discover() {
-    logger.info('weplay:emu:subscribe', {uuid: uuid, retry: retryCount++});
-    redis.publish('weplay:emu:subscribe', uuid);
+    logger.info('> weplay:emu:subscribe', {uuid, retry: retryCount++});
+    bus.publish('weplay:emu:subscribe', uuid);
     setTimeout(() => {
         if (!loaded)discover();
     }, 10000); //saveIntervalDelay
 }
+
+require('weplay-common').cleanup(function destroyData() {
+    logger.info('Destroying data.');
+    bus.publish('weplay:emu:unsubscribe', uuid);
+    bus.destroy();
+    if (emu)emu.destroy();
+});
 
 discover();
