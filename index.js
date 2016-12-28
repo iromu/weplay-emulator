@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const msgpack = require('msgpack');
 const debug = require('debug')('weplay:worker');
 const uuid = require('node-uuid').v4();
-const logger = require('weplay-common').logger('weplay-emulator');
+const logger = require('weplay-common').logger('weplay-emulator', uuid);
 
 const throttle = process.env.WEPLAY_THROTTLE || 200;
 process.title = 'weplay-emulator';
@@ -17,7 +17,6 @@ const redis = require('weplay-common').redis();
 const redisSub = require('weplay-common').redis();
 
 const EventBus = require('weplay-common').EventBus;
-
 let bus = new EventBus(redis, redisSub);
 
 const digest = state => {
@@ -48,12 +47,14 @@ var saveState = function () {
         if (snap) {
             logger.info(`> weplay:state:${romHash}`);
             const pack = msgpack.pack(snap);
+            state = pack;
             bus.publish(`weplay:state:${romHash}`, pack);
         }
     }
 };
 function load() {
     logger.debug('loading emulator');
+
     if (emu)emu.destroy();
     emu = new Emulator();
     let frameCounter = 0;
@@ -130,15 +131,16 @@ bus.subscribe('weplay:discover:init', (channel, id) => {
 
 
 var keepEmulatorRunning = function () {
+    if (destroyEmuTimeout)clearTimeout(destroyEmuTimeout);
     if (!emu)load();
 };
 var destroyEmu = function () {
     if (saveInterval)clearInterval(saveInterval);
     if (!destroyEmuTimeout) {
+        saveState();
         destroyEmuTimeout = setTimeout(() => {
             logger.debug('destroy emulator');
             if (emu) {
-                saveState();
                 emu.destroy();
                 emu = undefined;
             }
@@ -149,6 +151,7 @@ var destroyEmu = function () {
 };
 var healthCheck = function () {
     if (connections > 0) {
+        logger.debug('keepEmulatorRunning?');
         keepEmulatorRunning();
     } else {
         logger.debug('destroy emulator?');
@@ -167,11 +170,11 @@ var checker = (channel, data) => {
     switch (action) {
         case 'join':
             connections++;
-            logger.info(`< weplay:join:${romHash}`, {clientId: data, connections: connections});
+            logger.debug(`< weplay:join:${romHash}`, {clientId: data, connections: connections});
             break;
         case 'leave':
             connections = connections === 0 ? 0 : connections - 1;
-            logger.info(`< weplay:leave:${romHash}`, {clientId: data, connections: connections});
+            logger.debug(`< weplay:leave:${romHash}`, {clientId: data, connections: connections});
             break;
         case 'connections':
             connections = data;
@@ -193,7 +196,6 @@ function listenRoomEvents() {
     bus.subscribe(`weplay:move:${romHash}`, (channel, move) => {
         const room = channel.toString().split(":")[2];
         if (!romHash || room != romHash || !emu || !move) return;
-        logger.debug(`> weplay:move:${romHash}`);
         redis.get(`weplay:move-last:emu:${uuid}`, (err, last) => {
             if (last) {
                 last = last.toString();
@@ -203,7 +205,7 @@ function listenRoomEvents() {
             }
             redis.set(`weplay:move-last:emu:${uuid}`, Date.now());
 
-            logger.info(`< weplay:move:${romHash}`, {move: move.toString()});
+            logger.debug(`< weplay:move:${romHash}`, {move: move.toString()});
             emu.move(move.toString());
             bus.publish(`weplay:move-last:hash:${romHash}`, move.toString());
         });
