@@ -1,12 +1,10 @@
-FROM node:argon
+FROM node:7
 
 # Create app directory
 RUN mkdir -p /usr/src/app/emulator
 WORKDIR /usr/src/app/emulator
 
 COPY . .
-
-COPY rom.gb .
 
 # Install build dependencies
 RUN apt-get update
@@ -19,8 +17,9 @@ RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install
 
 # Setup environment
-ENV WEPLAY_REDIS_URI "redis:$REDIS_PORT_6379_TCP_PORT"
-ENV WEPLAY_ROM  rom.gb
+ENV NODE_ENV production
+ENV WEPLAY_REDIS_URI "redis:6379"
+ENV WEPLAY_LOGSTASH_URI "logstash:5001"
 
 # Run
 CMD [ "node", "index.js" ]
