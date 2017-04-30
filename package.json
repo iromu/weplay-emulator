@@ -7,6 +7,7 @@
     "babel-preset-es2015": "6.18.0",
     "canvas": "1.6.0",
     "debug": "2.2.0",
+    "fps": "0.0.3",
     "gameboy": "iromu/gameboy",
     "msgpack": "1.0.2",
     "node-uuid": "^1.4.7",
@@ -15,7 +16,8 @@
     "weplay-common": "iromu/weplay-common"
   },
   "scripts": {
-    "start": "WEPLAY_ROM=rom.gb node index.js"
+    "start": "WEPLAY_ROM=rom.gb node index.js",
+    "lint": "./node_modules/weplay-common/node_modules/.bin/eslint report ."
   },
   "engines": {
     "node": ">=7.0.0"

@@ -1,12 +1,16 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const msgpack = require('msgpack');
+const fps = require('fps');
+
 const EventBus = require('weplay-common').EventBus;
 const Emulator = require('./emulator');
-const msgpack = require('msgpack');
 const debug = require('debug')('weplay:worker');
 
 const throttle = process.env.WEPLAY_THROTTLE || 200;
+
+const autoload = process.env.AUTOLOAD || false;
 process.title = 'weplay-emulator';
 
 const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000;
@@ -23,14 +27,35 @@ class EmulatorService {
         this.romHash = null;
         this.romData = null;
 
+        this.ticker = fps({every: 200});
+        this.ticker.on('data', framerate => {
+            this.logger.info('EmulatorService[%s] fps %s', this.uuid, Math.floor(framerate));
+        });
         this.bus = new EventBus({
             url: discoveryUrl,
             port: discoveryPort,
             name: 'emu',
             id: this.uuid,
+            serverListeners: {
+                'streamJoinRequested': (socket, request)=> {
+                    if (this.romHash === request) {
+                        this.logger.info('EmulatorService.streamJoinRequested', {
+                            socket: socket.id,
+                            request: JSON.stringify(request)
+                        });
+                        socket.join(this.romHash);
+                    } else {
+                        this.logger.error('EmulatorService.streamJoinRequested', {
+                            socket: socket.id,
+                            request: JSON.stringify(request)
+                        });
+                    }
+                }
+
+            },
             clientListeners: [
-                {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
-                {name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
+                //{name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
+                //{name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
                 {name: 'rom', event: 'data', handler: this.onRomData.bind(this)},
                 {name: 'rom', event: 'hash', handler: this.onRomHash.bind(this)},
                 {name: 'rom', event: 'state', handler: this.onRomState.bind(this)}]
@@ -44,8 +69,11 @@ class EmulatorService {
     }
 
     init() {
+        this.destroy();
         this.logger.info('EmulatorService init()');
-        this.bus.emit('rom', 'request');
+        if (autoload) {
+            this.bus.emit('rom', 'request');
+        }
     }
 
     shouldStart() {
@@ -61,21 +89,19 @@ class EmulatorService {
 
     start() {
         this.logger.debug('loading emulator');
-
         if (this.emu)this.emu.destroy();
         this.emu = new Emulator();
         let frameCounter = 0;
 
         this.emu.on('error', () => {
-            logger.error('restarting emulator');
+            this.logger.error('restarting emulator');
             this.emu.destroy();
             setTimeout(load, 1000);
         });
 
-        this.bus.emit('compressor', 'hash', this.romHash);
         this.emu.on('frame', frame => {
             frameCounter++;
-            this.sendFrame(frame);
+            this.sendFrame(frame, frameCounter);
         });
 
         try {
@@ -95,6 +121,9 @@ class EmulatorService {
                 this.saveState();
             }, saveIntervalDelay);
             this.running = true;
+
+
+            this.bus.emit('compressor', 'streamJoinRequested', this.romHash);
         } catch (e) {
             this.logger.error(e);
         }
@@ -136,7 +165,9 @@ class EmulatorService {
     }
 
     sendFrame(frame) {
-        this.bus.publish(`${this.romHash}:frame`, {hash: this.romHash, frame: frame});
+        this.ticker.tick();
+        //this.logger.debug('sendFrame');
+        this.bus.stream(this.romHash, 'frame', frame);
         //this.bus.emit('compressor', 'frame', {hash: this.romHash, frame: frame});
     }
 
@@ -157,6 +188,7 @@ class EmulatorService {
     onRomConnect() {
         this.logger.info('onRomConnect');
         this.romDisconnected = false;
+        this.bus.emit('rom', 'request');
     }
 
     onRomDisconnect() {
@@ -180,10 +212,10 @@ class EmulatorService {
         this.shouldStart();
     }
 
-    onRomHash(hash) {
-        this.logger.info('EmulatorService.onRomHash', hash);
-        if (!this.romHash || !this.romHash === hash) {
-            this.romHash = hash;
+    onRomHash(hashData) {
+        this.logger.info('EmulatorService.onRomHash', hashData);
+        if (!this.romHash || !this.romHash === hashData.hash) {
+            this.romHash = hashData.hash;
             this.shouldStart();
         }
     }
