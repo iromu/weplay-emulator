@@ -17,7 +17,7 @@ const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000
 const destroyEmuTimeoutDelay = 10000
 
 class EmulatorService {
-  constructor(discoveryUrl, discoveryPort) {
+  constructor(discoveryUrl, discoveryPort, statusPort) {
     this.uuid = require('node-uuid').v4()
     this.logger = require('weplay-common').logger('weplay-emulator-service', this.uuid)
 
@@ -33,28 +33,21 @@ class EmulatorService {
     this.bus = new EventBus({
       url: discoveryUrl,
       port: discoveryPort,
+      statusPort: statusPort,
       name: 'emu',
       id: this.uuid,
       serverListeners: {
-        'streamJoinRequested': (socket, request) => {
-          if (this.romHash === request) {
-            this.logger.info('EmulatorService.streamJoinRequested', {
-              socket: socket.id,
-              request: JSON.stringify(request)
-            })
-            socket.join(this.romHash)
-          } else {
-            this.logger.error('EmulatorService.streamJoinRequested', {
-              socket: socket.id,
-              request: JSON.stringify(request)
-            })
+        'move': (socket, request) => {
+          console.log('move Request', request)
+          if (this.emu) {
+            this.emu.move(request)
           }
         }
-
       },
       clientListeners: [
         // {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
         // {name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
+        {name: 'gateway', event: 'move', handler: this.onMove.bind(this)},
         {name: 'rom', event: 'data', handler: this.onRomData.bind(this)},
         {name: 'rom', event: 'hash', handler: this.onRomHash.bind(this)},
         {name: 'rom', event: 'state', handler: this.onRomState.bind(this)}]
@@ -102,7 +95,7 @@ class EmulatorService {
       frameCounter++
       this.sendFrame(frame, frameCounter)
     })
-
+    this.listenRoomEvents()
     try {
       if (this.romState) {
         this.logger.info('init from state', this.digest(this.romState))
@@ -124,6 +117,37 @@ class EmulatorService {
     } catch (e) {
       this.logger.error(e)
     }
+  }
+
+  listenRoomEvents() {
+    this.logger.info('listenRoomEvents', this.romHash)
+    // connections = 0
+    // bus.subscribe(`weplay:move:${romHash}`, (channel, move) => {
+    //   const room = channel.toString().split(':')[2]
+    //   if (!romHash || room != romHash || !emu || !move) return
+    //   redis.get(`weplay:move-last:emu:${uuid}`, (err, last) => {
+    //     if (last) {
+    //       last = last.toString()
+    //       if (Date.now() - last < throttle) {
+    //         return
+    //       }
+    //     }
+    //     redis.set(`weplay:move-last:emu:${uuid}`, Date.now())
+    //
+    //     logger.debug(`< weplay:move:${romHash}`, {move: move.toString()})
+    //     emu.move(move.toString())
+    //     bus.publish(`weplay:move-last:hash:${romHash}`, move.toString())
+    //   })
+    //
+    // })
+    //
+    //
+    // bus.subscribe(`weplay:join:${romHash}`, checker)
+    // bus.subscribe(`weplay:leave:${romHash}`, checker)
+    // bus.subscribe(`weplay:connections:${romHash}`, checker)
+    // this.bus.subscribe({room: this.romHash, event: 'move'}, (channel, move) => {
+    //   this.logger.debug(`< weplay:move:${this.romHash}`, {move: move.toString()})
+    // })
   }
 
   unload(force) {
@@ -200,6 +224,10 @@ class EmulatorService {
       this.romData = data
       this.shouldStart()
     }
+  }
+
+  onMove(data) {
+    this.logger.info('onMove', {data: data})
   }
 
   onRomState(state) {
