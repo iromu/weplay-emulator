@@ -13,7 +13,7 @@
     "node-uuid": "^1.4.7",
     "redis": "2.6.2",
     "socket.io-emitter": "1.0.0",
-    "weplay-common": "iromu/weplay-common"
+    "weplay-common": "iromu/weplay-common#develop"
   },
   "scripts": {
     "start": "WEPLAY_ROM=rom.gb node index.js",

@@ -10,8 +10,7 @@ const Emulator = require('./emulator')
 
 // const throttle = process.env.WEPLAY_THROTTLE || 200
 
-const autoload = process.env.AUTOLOAD || false
-process.title = 'weplay-emulator'
+// process.title = 'weplay-emulator'
 
 const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000
 const destroyEmuTimeoutDelay = 10000
@@ -38,11 +37,13 @@ class EmulatorService {
       id: this.uuid,
       serverListeners: {
         'move': (socket, request) => {
-          console.log('move Request', request)
+          // console.log('move Request', request)
           if (this.emu) {
             this.emu.move(request)
           }
-        }
+        },
+        'streamJoinRequested': this.streamJoinRequested.bind(this),
+        'streamCreateRequested': this.streamCreateRequested.bind(this)
       },
       clientListeners: [
         // {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
@@ -63,9 +64,9 @@ class EmulatorService {
   init() {
     this.destroy()
     this.logger.info('EmulatorService init()')
-    if (autoload) {
-      this.bus.emit('rom', 'request')
-    }
+    // if (autoload) {
+    //   this.bus.emit('rom', 'request')
+    // }
   }
 
   shouldStart() {
@@ -242,6 +243,31 @@ class EmulatorService {
       this.romHash = hashData.hash
       this.shouldStart()
     }
+  }
+
+  streamCreateRequested(socket, request) {
+    this.logger.info('EmulatorService.streamCreateRequested', {
+      socket: socket.id,
+      request: JSON.stringify(request)
+    })
+  }
+
+  streamJoinRequested(socket, request) {
+    this.logger.info('EmulatorService.streamJoinRequested', {
+      socket: socket.id,
+      request: JSON.stringify(request)
+    })
+    if (!this.romHash) {
+      this.romHash = request
+      this.bus.emit('rom', 'query', this.romHash)
+    } else {
+      this.logger.error('EmulatorService.streamJoinRequested. Ignoring request for a new stream.', {
+        socket: socket.id,
+        request: JSON.stringify(request)
+      })
+    }
+
+    socket.join(this.romHash)
   }
 
   destroy() {
