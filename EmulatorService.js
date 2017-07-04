@@ -57,12 +57,12 @@ class EmulatorService {
         discoveryUrl: discoveryUrl,
         uuid: this.uuid
       })
-      this.init()
+      this.onConnect()
     })
   }
 
-  init() {
-    this.destroy()
+  onConnect() {
+    // this.destroy()
     this.logger.info('EmulatorService init()')
     // if (autoload) {
     //   this.bus.emit('rom', 'request')
