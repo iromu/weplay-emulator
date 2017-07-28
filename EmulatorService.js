@@ -1,5 +1,7 @@
 // const path = require('path')
 // const fs = require('fs')
+
+const os = require('os')
 const crypto = require('crypto')
 const msgpack = require('msgpack')
 const fps = require('fps')
@@ -27,7 +29,7 @@ class EmulatorService {
 
     this.ticker = fps({every: 200})
     this.ticker.on('data', framerate => {
-      this.logger.info('EmulatorService[%s] fps %s', this.uuid, Math.floor(framerate))
+      this.logger.info('EmulatorService[%s] fps %s load %s mem %s free %s', this.romHash, Math.floor(framerate), os.loadavg().join('/'), os.totalmem(), os.freemem())
     })
     this.bus = new EventBus({
       url: discoveryUrl,
@@ -278,4 +280,5 @@ class EmulatorService {
     this.unload(true)
   }
 }
+
 module.exports = EmulatorService
