@@ -15,7 +15,7 @@ const Emulator = require('./emulator')
 // process.title = 'weplay-emulator'
 
 const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000
-const destroyEmuTimeoutDelay = 10000
+const DESTROY_DELAY = 10000
 
 class EmulatorService {
   constructor(discoveryUrl, discoveryPort, statusPort) {
@@ -45,7 +45,8 @@ class EmulatorService {
           }
         },
         'streamJoinRequested': this.streamJoinRequested.bind(this),
-        'streamCreateRequested': this.streamCreateRequested.bind(this)
+        'streamCreateRequested': this.streamCreateRequested.bind(this),
+        'streamLeaveRequested': this.streamLeaveRequested.bind(this)
       },
       clientListeners: [
         // {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
@@ -116,7 +117,7 @@ class EmulatorService {
         this.saveState()
       }, saveIntervalDelay)
       this.running = true
-      this.bus.emit('compressor', 'streamJoinRequested', this.romHash)
+      // this.bus.emit('compressor', 'streamJoinRequested', this.romHash)
     } catch (e) {
       this.logger.error(e)
     }
@@ -124,36 +125,9 @@ class EmulatorService {
 
   listenRoomEvents() {
     this.logger.info('listenRoomEvents', this.romHash)
-    // connections = 0
-    // bus.subscribe(`weplay:move:${romHash}`, (channel, move) => {
-    //   const room = channel.toString().split(':')[2]
-    //   if (!romHash || room != romHash || !emu || !move) return
-    //   redis.get(`weplay:move-last:emu:${uuid}`, (err, last) => {
-    //     if (last) {
-    //       last = last.toString()
-    //       if (Date.now() - last < throttle) {
-    //         return
-    //       }
-    //     }
-    //     redis.set(`weplay:move-last:emu:${uuid}`, Date.now())
-    //
-    //     logger.debug(`< weplay:move:${romHash}`, {move: move.toString()})
-    //     emu.move(move.toString())
-    //     bus.publish(`weplay:move-last:hash:${romHash}`, move.toString())
-    //   })
-    //
-    // })
-    //
-    //
-    // bus.subscribe(`weplay:join:${romHash}`, checker)
-    // bus.subscribe(`weplay:leave:${romHash}`, checker)
-    // bus.subscribe(`weplay:connections:${romHash}`, checker)
-    // this.bus.subscribe({room: this.romHash, event: 'move'}, (channel, move) => {
-    //   this.logger.debug(`< weplay:move:${this.romHash}`, {move: move.toString()})
-    // })
   }
 
-  unload(force) {
+  unload(force, request) {
     if (this.saveInterval) {
       clearInterval(this.saveInterval)
       this.saveInterval = undefined
@@ -163,24 +137,28 @@ class EmulatorService {
       if (this.destroyEmuTimeout) {
         clearTimeout(this.destroyEmuTimeout)
         this.destroyEmuTimeout = undefined
-        this.saveState()
-        this.logger.debug('destroy emulator')
-        if (this.emu) {
-          this.emu.destroy()
-          this.emu = undefined
-        }
       }
+      this.destroyEmulator(request)
     } else if (!this.destroyEmuTimeout) {
-      this.saveState()
       this.destroyEmuTimeout = setTimeout(() => {
-        this.logger.debug('destroy emulator')
-        if (this.emu) {
-          this.emu.destroy()
-          this.emu = undefined
-        }
+        this.destroyEmulator(request)
         clearTimeout(this.destroyEmuTimeout)
         this.destroyEmuTimeout = undefined
-      }, destroyEmuTimeoutDelay)
+      }, DESTROY_DELAY)
+    }
+  }
+
+  destroyEmulator(request) {
+    this.logger.debug('destroy emulator')
+    this.saveState()
+    if (this.emu) {
+      this.emu.destroy()
+      this.emu = undefined
+    }
+    this.bus.emit('rom', 'free', this.romHash)
+    this.bus.destroyStream(this.romHash, 'frame')
+    if (request !== this.romHash) {
+      this.bus.destroyStream(request, 'frame')
     }
     this.romHash = null
     this.romState = null
@@ -252,6 +230,15 @@ class EmulatorService {
       socket: socket.id,
       request: JSON.stringify(request)
     })
+  }
+
+  streamLeaveRequested(socket, request) {
+    this.logger.info('EmulatorService.streamLeaveRequested', {
+      socket: socket.id,
+      request: JSON.stringify(request)
+    })
+
+    this.unload(true, request)
   }
 
   streamJoinRequested(socket, request) {
