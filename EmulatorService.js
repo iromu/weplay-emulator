@@ -155,9 +155,12 @@ class EmulatorService {
       this.emu.destroy()
       this.emu = undefined
     }
-    this.bus.emit('rom', 'free', this.romHash)
+    if (this.romHash !== undefined) {
+      this.bus.emit('rom', 'free', this.romHash)
+    }
     this.bus.destroyStream(this.romHash, 'frame')
     if (request !== this.romHash) {
+      this.bus.emit('rom', 'free', request)
       this.bus.destroyStream(request, 'frame')
     }
     this.romHash = null
