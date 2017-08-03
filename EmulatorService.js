@@ -240,8 +240,9 @@ class EmulatorService {
       socket: socket.id,
       request: JSON.stringify(request)
     })
-
-    this.unload(true, request)
+    if (request === this.romHash) {
+      this.unload(true, request)
+    }
   }
 
   streamJoinRequested(socket, request) {
@@ -257,6 +258,7 @@ class EmulatorService {
         socket: socket.id,
         request: JSON.stringify(request)
       })
+      socket.emit('streamRejected', request)
     }
 
     socket.join(this.romHash)
