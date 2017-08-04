@@ -120,6 +120,8 @@ class EmulatorService {
       // this.bus.emit('compressor', 'streamJoinRequested', this.romHash)
     } catch (e) {
       this.logger.error(e)
+      this.bus.emit('rom', 'free', this.romHash)
+      this.bus.destroyStream(this.romHash, 'frame' + this.romHash)
     }
   }
 
@@ -155,14 +157,14 @@ class EmulatorService {
       this.emu.destroy()
       this.emu = undefined
     }
-    if (this.romHash !== undefined) {
+    if (this.romHash) {
       this.bus.emit('rom', 'free', this.romHash)
+      this.bus.destroyStream(this.romHash, 'frame' + this.romHash)
     }
-    this.bus.destroyStream(this.romHash, 'frame')
-    if (request !== this.romHash) {
-      this.bus.emit('rom', 'free', request)
-      this.bus.destroyStream(request, 'frame')
-    }
+    // if (request) {
+    //   this.bus.emit('rom', 'free', request)
+    //   this.bus.destroyStream(request, 'frame' + request)
+    // }
     this.romHash = null
     this.romState = null
     this.romData = null
@@ -171,7 +173,7 @@ class EmulatorService {
   sendFrame(frame) {
     this.ticker.tick()
     // this.logger.debug('sendFrame');
-    this.bus.stream(this.romHash, 'frame', frame)
+    this.bus.stream(this.romHash, 'frame' + this.romHash, frame)
     // this.bus.emit('compressor', 'frame', {hash: this.romHash, frame: frame});
   }
 
@@ -243,25 +245,30 @@ class EmulatorService {
     if (request === this.romHash) {
       this.unload(true, request)
     }
-  }
-
-  streamJoinRequested(socket, request) {
-    this.logger.info('EmulatorService.streamJoinRequested', {
+    this.logger.info('EmulatorService.streamLeaveRequested DONE', {
       socket: socket.id,
       request: JSON.stringify(request)
     })
-    if (!this.romHash) {
-      this.romHash = request
-      this.bus.emit('rom', 'query', this.romHash)
-    } else {
-      this.logger.error('EmulatorService.streamJoinRequested. Ignoring request for a new stream.', {
+  }
+
+  streamJoinRequested(socket, request) {
+    if (request) {
+      this.logger.info('EmulatorService.streamJoinRequested', {
         socket: socket.id,
         request: JSON.stringify(request)
       })
-      socket.emit('streamRejected', request)
+      if (!this.romHash) {
+        this.romHash = request
+        this.bus.emit('rom', 'query', request)
+      } else {
+        this.logger.error('EmulatorService.streamJoinRequested. Ignoring request for a new stream.', {
+          socket: socket.id,
+          request: JSON.stringify(request)
+        })
+        socket.emit('streamRejected', request)
+      }
+      socket.join(this.romHash)
     }
-
-    socket.join(this.romHash)
   }
 
   destroy() {
