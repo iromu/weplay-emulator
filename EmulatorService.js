@@ -155,7 +155,6 @@ class EmulatorService {
     this.saveState()
     if (this.emu) {
       this.emu.destroy()
-      this.emu = undefined
     }
     if (this.romHash) {
       this.bus.emit('rom', 'free', this.romHash)
