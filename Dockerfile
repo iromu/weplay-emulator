@@ -1,4 +1,4 @@
-FROM node:8
+FROM iromu/weplay-common:latest
 
 # Create app directory
 RUN mkdir -p /usr/src/app/emulator
@@ -14,7 +14,9 @@ RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install app dependencies
-RUN npm install
+RUN npm -g i forever
+RUN yarn --production
+RUN yarn link weplay-common
 
 # Setup environment
 ENV NODE_ENV production
@@ -24,4 +26,4 @@ ENV WEPLAY_REDIS_URI "redis:6379"
 ENV WEPLAY_LOGSTASH_URI "logstash:5001"
 
 # Run
-CMD [ "node", "index.js" ]
+CMD ["forever", "index.js"]

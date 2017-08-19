@@ -5,6 +5,7 @@ const Emitter = require('events').EventEmitter
 class Emulator {
   constructor() {
     if (!(this instanceof Emulator)) return new Emulator()
+    this.joyPadEventTimeoutByKey = {}
     this.canvas = new Canvas(160, 144)
     this.gbOpts = {drawEvents: true}
   }
@@ -15,7 +16,9 @@ class Emulator {
   }
 
   initWithState(state) {
-    this.gameboy = gameboy(this.canvas, '', this.gbOpts)
+    if (!this.gameboy) {
+      this.gameboy = gameboy(this.canvas, '', this.gbOpts)
+    }
     this.gameboy.returnFromState(state)
   }
 
@@ -43,8 +46,15 @@ class Emulator {
     if (key >= 0 && key < 8) {
       const gb = this.gameboy
       gb.JoyPadEvent(key, true)
-      setTimeout(() => {
+      // Extend timeout
+      if (this.joyPadEventTimeoutByKey[key]) {
+        clearTimeout(this.joyPadEventTimeoutByKey[key])
+        this.joyPadEventTimeoutByKey[key] = undefined
+      }
+      this.joyPadEventTimeoutByKey[key] = setTimeout(() => {
         gb.JoyPadEvent(key, false)
+        clearTimeout(this.joyPadEventTimeoutByKey[key])
+        this.joyPadEventTimeoutByKey[key] = undefined
       }, 50)
     }
     return this
@@ -60,7 +70,7 @@ class Emulator {
     this.destroyed = true
     this.running = false
     this.canvas = null
-    this.gameboy = null
+    // this.gameboy = null
     return this
   }
 }

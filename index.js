@@ -8,3 +8,8 @@ const EmulatorService = require('./EmulatorService')
 const service = new EmulatorService(discoveryUrl, discoveryPort, statusPort)
 
 require('weplay-common').cleanup(service.destroy.bind(service))
+
+// catch uncaught exceptions,
+process.on('uncaughtException', function (e) {
+  console.log('Uncaught Exception...' + e)
+})

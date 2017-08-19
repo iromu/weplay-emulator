@@ -16,17 +16,35 @@ const Emulator = require('./emulator')
 
 const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000
 const DESTROY_DELAY = 10000
+const memwatch = require('memwatch-next')
+
+const CHECK_INTERVAL = 2000
 
 class EmulatorService {
   constructor(discoveryUrl, discoveryPort, statusPort) {
-    this.uuid = require('node-uuid').v4()
+    this.uuid = require('uuid/v1')()
     this.logger = require('weplay-common').logger('weplay-emulator-service', this.uuid)
+    memwatch.on('stats', (stats) => {
+      this.logger.info('CompressorService stats', stats)
+    })
+    memwatch.on('leak', (info) => {
+      this.logger.error('CompressorService leak', info)
+    })
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval)
+      this.checkInterval = undefined
+    }
+
+    // this.checkInterval = setInterval(() => {
+    //   this.gc()
+    // }, CHECK_INTERVAL)
 
     this.emu = null
     this.romState = null
     this.romHash = null
     this.romData = null
 
+    this.roomsTimestamp = {}
     this.ticker = fps({every: 200})
     this.ticker.on('data', framerate => {
       this.logger.info('EmulatorService[%s] fps %s load %s mem %s free %s', this.romHash, Math.floor(framerate), os.loadavg().join('/'), os.totalmem(), os.freemem())
@@ -49,8 +67,8 @@ class EmulatorService {
         'streamLeaveRequested': this.streamLeaveRequested.bind(this)
       },
       clientListeners: [
-        // {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
-        // {name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
+        {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
+        {name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
         {name: 'gateway', event: 'move', handler: this.onMove.bind(this)},
         {name: 'rom', event: 'data', handler: this.onRomData.bind(this)},
         {name: 'rom', event: 'hash', handler: this.onRomHash.bind(this)},
@@ -62,6 +80,28 @@ class EmulatorService {
       })
       this.onConnect()
     })
+  }
+
+  gc() {
+    for (var room in this.roomsTimestamp) {
+      if (this.isOlderThan(this.roomsTimestamp[room], CHECK_INTERVAL)) {
+        if (room === this.romHash) {
+          try {
+            this.unload(true, room)
+          } catch (e) {
+            this.logger.error(e)
+          }
+        }
+      }
+    }
+    if (!this.roomsTimestamp[this.romHash] && this.romHash) {
+      this.bus.emit('rom', 'query', this.romHash)
+    }
+    this.roomsTimestamp = {}
+  }
+
+  isOlderThan(ts, limit) {
+    return Date.now() - ts > limit
   }
 
   onConnect() {
@@ -104,9 +144,13 @@ class EmulatorService {
       if (this.romState) {
         this.logger.info('init from state', this.digest(this.romState))
         this.emu.initWithState(msgpack.unpack(this.romState))
-      } else {
+      } else if (this.romData) {
         this.logger.info('init from rom')
         this.emu.initWithRom(this.romData)
+      } else {
+        this.logger.error('internal state error')
+        this.unload()
+        return
       }
       this.emu.run()
 
@@ -120,8 +164,7 @@ class EmulatorService {
       // this.bus.emit('compressor', 'streamJoinRequested', this.romHash)
     } catch (e) {
       this.logger.error(e)
-      this.bus.emit('rom', 'free', this.romHash)
-      this.bus.destroyStream(this.romHash, 'frame' + this.romHash)
+      this.unload()
     }
   }
 
@@ -170,6 +213,7 @@ class EmulatorService {
   }
 
   sendFrame(frame) {
+    this.roomsTimestamp[this.romHash] = Date.now()
     this.ticker.tick()
     // this.logger.debug('sendFrame');
     this.bus.stream(this.romHash, 'frame' + this.romHash, frame)
@@ -189,17 +233,18 @@ class EmulatorService {
   }
 
   // ROM Service Listeners
-
   onRomConnect() {
-    this.logger.info('onRomConnect')
-    this.romDisconnected = false
-    this.bus.emit('rom', 'request')
+    this.logger.info('onRomConnect', this.romHash)
+    if (this.romHash) {
+      this.bus.emit('rom', 'query', this.romHash)
+    }
   }
 
   onRomDisconnect() {
-    this.romDisconnected = true
-    this.logger.info('onRomDisconnect')
-    this.bus.emit('rom', 'request')
+    this.logger.info('onRomDisconnect', this.romHash)
+    if (this.romHash) {
+      this.bus.emit('rom', 'query', this.romHash)
+    }
   }
 
   onRomData(data) {
@@ -241,8 +286,13 @@ class EmulatorService {
       socket: socket.id,
       request: JSON.stringify(request)
     })
+    delete this.roomsTimestamp[request]
     if (request === this.romHash) {
-      this.unload(true, request)
+      try {
+        this.unload(true, request)
+      } catch (e) {
+        this.logger.error(e)
+      }
     }
     this.logger.info('EmulatorService.streamLeaveRequested DONE', {
       socket: socket.id,
@@ -252,21 +302,30 @@ class EmulatorService {
 
   streamJoinRequested(socket, request) {
     if (request) {
-      this.logger.info('EmulatorService.streamJoinRequested', {
+      this.logger.debug('EmulatorService.streamJoinRequested', {
         socket: socket.id,
-        request: JSON.stringify(request)
+        request: JSON.stringify(request),
+        current: this.romHash
       })
       if (!this.romHash) {
         this.romHash = request
         this.bus.emit('rom', 'query', request)
-      } else {
-        this.logger.error('EmulatorService.streamJoinRequested. Ignoring request for a new stream.', {
+        socket.join(this.romHash)
+      } else if (this.romHash === request) {
+        this.logger.debug('EmulatorService.streamJoinRequested. Ignoring request for same stream.', {
           socket: socket.id,
-          request: JSON.stringify(request)
+          request: JSON.stringify(request),
+          current: this.romHash
+        })
+        socket.join(this.romHash)
+      } else {
+        this.logger.error('EmulatorService.streamJoinRequested. Rejecting request for a new stream.', {
+          socket: socket.id,
+          request: JSON.stringify(request),
+          current: this.romHash
         })
         socket.emit('streamRejected', request)
       }
-      socket.join(this.romHash)
     }
   }
 
