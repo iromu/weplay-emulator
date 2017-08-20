@@ -1,18 +1,97 @@
 const gameboy = require('gameboy')
 const Canvas = require('canvas')
 const Emitter = require('events').EventEmitter
+var pcm = require('pcm-util')
+var toWav = require('audiobuffer-to-wav')
+var lame = require('lame')
+var stream = require('stream')
 
 class Emulator {
   constructor() {
     if (!(this instanceof Emulator)) return new Emulator()
     this.joyPadEventTimeoutByKey = {}
     this.canvas = new Canvas(160, 144)
-    this.gbOpts = {drawEvents: true}
+    this.bufferStream = new stream.PassThrough()
+    this.emitStream = new stream.PassThrough()
+    this.emitStream.on('data', (data) => {
+      this.emit('audio', data)
+    })
+
+    // create the Encoder instance
+    this.encoder = new lame.Encoder({
+      // input
+      channels: 2,        // 2 channels (left and right)
+      bitDepth: 16,       // 16-bit samples
+      sampleRate: 44100,  // 44,100 Hz sample rate
+
+      // output
+      bitRate: 128,
+      outSampleRate: 22050,
+      mode: lame.STEREO // STEREO (default), JOINTSTEREO, DUALCHANNEL or MONO
+    })
+    this.encoder.on('data', (data) => {
+      self.emit('audio', data)
+    })
+    const self = this
+    this.soundInterface = class {
+      constructor(channels,
+                  sampleRate,
+                  minBufferSize,
+                  maxBufferSize,
+                  underRunCallback,
+                  heartbeatCallback,
+                  postheartbeatCallback,
+                  volume,
+                  failureCallback) {
+        this.minBufferSize = minBufferSize
+        this.maxBufferSize = maxBufferSize
+        this.channels = channels
+        this.sampleRate = sampleRate
+      }
+
+      writeAudioNoCallback(buffer) {
+        this.toWavArrayBuffer(buffer)
+      }
+
+      toMP3ArrayBuffer(buffer) {
+        self.bufferStream.write(Buffer.from(buffer))
+        self.bufferStream.pipe(self.encoder)
+      }
+
+      toWavArrayBuffer(buffer) {
+        const audioBuffer = pcm.toAudioBuffer(buffer, {
+          channels: this.channels || 2,
+          sampleRate: this.sampleRate || 44100,
+          interleaved: true,
+          float: true,
+          signed: true,
+          bitDepth: 8,
+          byteOrder: 'LE',
+          max: this.maxBufferSize || 32767,
+          min: this.minBufferSize || -32768,
+          samplesPerFrame: 1024
+        })
+        const arrayBuffer = toWav(audioBuffer)
+        self.emit('audio', arrayBuffer)
+      }
+
+      changeVolume(volume) {
+        console.log(volume)
+      }
+
+      remainingBuffer() {
+      }
+    }
+    this.gbOpts = {drawEvents: true, sound: this.soundInterface}
   }
 
   initWithRom(rom) {
     this.gameboy = gameboy(this.canvas, rom, this.gbOpts)
     this.gameboy.start()
+    // this.gameboy.audioHandle.on('sound', (buf) => {
+    //   console.log('initWithRom sound')
+    //   this.emit('sound', buf)
+    // })
   }
 
   initWithState(state) {
@@ -20,6 +99,10 @@ class Emulator {
       this.gameboy = gameboy(this.canvas, '', this.gbOpts)
     }
     this.gameboy.returnFromState(state)
+    // this.gameboy.audioHandle.on('sound', (buf) => {
+    //   console.log('initWithState sound')
+    //   this.emit('sound', buf)
+    // })
   }
 
   run() {

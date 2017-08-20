@@ -139,6 +139,9 @@ class EmulatorService {
       frameCounter++
       this.sendFrame(frame, frameCounter)
     })
+    this.emu.on('audio', audio => {
+      this.sendAudio(audio)
+    })
     this.listenRoomEvents()
     try {
       if (this.romState) {
@@ -215,9 +218,12 @@ class EmulatorService {
   sendFrame(frame) {
     this.roomsTimestamp[this.romHash] = Date.now()
     this.ticker.tick()
-    // this.logger.debug('sendFrame');
     this.bus.stream(this.romHash, 'frame' + this.romHash, frame)
-    // this.bus.emit('compressor', 'frame', {hash: this.romHash, frame: frame});
+  }
+
+  sendAudio(audio) {
+    this.roomsTimestamp[this.romHash] = Date.now()
+    this.bus.stream(this.romHash, 'audio' + this.romHash, audio)
   }
 
   saveState() {

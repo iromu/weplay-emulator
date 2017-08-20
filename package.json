@@ -3,17 +3,21 @@
   "version": "0.0.1",
   "description": "",
   "dependencies": {
+    "audiobuffer-to-wav": "^1.0.0",
     "babel-cli": "^6.24.1",
     "babel-preset-es2015": "^6.24.1",
     "canvas": "^1.6.6",
     "debug": "^3.0.0",
     "fps": "0.0.3",
     "gameboy": "github:iromu/gameboy",
+    "lame": "^1.2.4",
     "memwatch-next": "^0.3.0",
     "msgpack": "1.0.2",
+    "pcm-util": "^3.0.0",
     "redis": "^2.7.1",
     "socket.io-emitter": "^3.0.1",
     "uuid": "^3.1.0",
+    "web-audio-api": "^0.2.2",
     "weplay-common": "github:iromu/weplay-common#develop"
   },
   "scripts": {
