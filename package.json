@@ -10,7 +10,7 @@
     "debug": "^3.0.0",
     "fps": "0.0.3",
     "gameboy": "github:iromu/gameboy",
-    "lame": "^1.2.4",
+    "node-nes": "github:iromu/node-nes",
     "memwatch-next": "^0.3.0",
     "msgpack": "1.0.2",
     "pcm-util": "^3.0.0",

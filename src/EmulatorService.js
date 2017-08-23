@@ -5,19 +5,14 @@ const os = require('os')
 const crypto = require('crypto')
 const msgpack = require('msgpack')
 const fps = require('fps')
-
-const EventBus = require('weplay-common').EventBus
-const Emulator = require('./emulator')
-// const debug = require('debug')('weplay:worker')
-
-// const throttle = process.env.WEPLAY_THROTTLE || 200
-
-// process.title = 'weplay-emulator'
-
-const saveIntervalDelay = process.env.WEPLAY_SAVE_INTERVAL || 60000
-const DESTROY_DELAY = 10000
 const memwatch = require('memwatch-next')
 
+const EventBus = require('weplay-common').EventBus
+const RomListeners = require('./RomListeners')
+const EmulatorFactory = require('./EmulatorFactory')
+
+const SAVE_INTERVAL_DELAY = process.env.WEPLAY_SAVE_INTERVAL || 60000
+const DESTROY_DELAY = 10000
 const CHECK_INTERVAL = 2000
 
 class EmulatorService {
@@ -35,11 +30,12 @@ class EmulatorService {
       this.checkInterval = undefined
     }
 
-    // this.checkInterval = setInterval(() => {
-    //   this.gc()
-    // }, CHECK_INTERVAL)
-
+    this.checkInterval = setInterval(() => {
+      this.gc()
+    }, CHECK_INTERVAL)
+    this.romListeners = new RomListeners()
     this.emu = null
+    this.system = null
     this.romState = null
     this.romHash = null
     this.romData = null
@@ -67,12 +63,11 @@ class EmulatorService {
         'streamLeaveRequested': this.streamLeaveRequested.bind(this)
       },
       clientListeners: [
-        {name: 'rom', event: 'connect', handler: this.onRomConnect.bind(this)},
-        {name: 'rom', event: 'disconnect', handler: this.onRomDisconnect.bind(this)},
-        {name: 'gateway', event: 'move', handler: this.onMove.bind(this)},
-        {name: 'rom', event: 'data', handler: this.onRomData.bind(this)},
-        {name: 'rom', event: 'hash', handler: this.onRomHash.bind(this)},
-        {name: 'rom', event: 'state', handler: this.onRomState.bind(this)}]
+        {name: 'rom', event: 'connect', handler: this.romListeners.onRomConnect.bind(this)},
+        {name: 'rom', event: 'disconnect', handler: this.romListeners.onRomDisconnect.bind(this)},
+        {name: 'rom', event: 'data', handler: this.romListeners.onRomData.bind(this)},
+        {name: 'rom', event: 'hash', handler: this.romListeners.onRomHash.bind(this)},
+        {name: 'rom', event: 'state', handler: this.romListeners.onRomState.bind(this)}]
     }, () => {
       this.logger.info('EmulatorService connected to discovery server', {
         discoveryUrl: discoveryUrl,
@@ -94,9 +89,9 @@ class EmulatorService {
         }
       }
     }
-    if (!this.roomsTimestamp[this.romHash] && this.romHash) {
-      this.bus.emit('rom', 'query', this.romHash)
-    }
+    // if (!this.roomsTimestamp[this.romHash] && this.romHash) {
+    //   this.bus.emit('rom', 'query', this.romHash)
+    // }
     this.roomsTimestamp = {}
   }
 
@@ -124,26 +119,25 @@ class EmulatorService {
   }
 
   start() {
-    this.logger.debug('loading emulator')
-    if (this.emu) this.emu.destroy()
-    this.emu = new Emulator()
-    let frameCounter = 0
+    this.logger.info('loading emulator', this.system)
 
-    this.emu.on('error', () => {
-      this.logger.error('restarting emulator')
-      this.emu.destroy()
-      setTimeout(this.start, 1000)
-    })
-
-    this.emu.on('frame', frame => {
-      frameCounter++
-      this.sendFrame(frame, frameCounter)
-    })
-    this.emu.on('audio', audio => {
-      this.sendAudio(audio)
-    })
-    this.listenRoomEvents()
     try {
+      if (this.emu) this.emu.destroy()
+      this.emu = EmulatorFactory.getEmu(this.system)
+      let frameCounter = 0
+
+      this.emu.on('error', (e) => {
+        this.logger.error(e)
+        this.unload()
+      })
+
+      this.emu.on('frame', frame => {
+        frameCounter++
+        this.sendFrame(frame, frameCounter)
+      })
+      this.emu.on('audio', audio => {
+        this.sendAudio(audio)
+      })
       if (this.romState) {
         this.logger.info('init from state', this.digest(this.romState))
         this.emu.initWithState(msgpack.unpack(this.romState))
@@ -157,22 +151,19 @@ class EmulatorService {
       }
       this.emu.run()
 
-      this.logger.info('save delay %d', saveIntervalDelay)
+      this.logger.info('save delay %d', SAVE_INTERVAL_DELAY)
 
       if (this.saveInterval) clearInterval(this.saveInterval)
+      const hash = this.romHash
       this.saveInterval = setInterval(() => {
-        this.saveState()
-      }, saveIntervalDelay)
+        this.saveState(hash)
+      }, SAVE_INTERVAL_DELAY)
       this.running = true
       // this.bus.emit('compressor', 'streamJoinRequested', this.romHash)
     } catch (e) {
       this.logger.error(e)
       this.unload()
     }
-  }
-
-  listenRoomEvents() {
-    this.logger.info('listenRoomEvents', this.romHash)
   }
 
   unload(force, request) {
@@ -198,7 +189,8 @@ class EmulatorService {
 
   destroyEmulator(request) {
     this.logger.debug('destroy emulator')
-    this.saveState()
+    if (this.saveInterval) clearInterval(this.saveInterval)
+    this.romHash && this.saveState()
     if (this.emu) {
       this.emu.destroy()
     }
@@ -226,57 +218,14 @@ class EmulatorService {
     this.bus.stream(this.romHash, 'audio' + this.romHash, audio)
   }
 
-  saveState() {
-    if (this.emu) {
+  saveState(romHash) {
+    if (this.emu && romHash && this.running) {
       const snap = this.emu.snapshot()
       if (snap) {
-        const pack = msgpack.pack(snap)
-        this.romState = pack
-        this.bus.emit('rom', 'state', pack)
-        this.logger.info(`> state ${this.romHash}`, this.digest(this.romState))
+        // this.romState = msgpack.pack(snap)
+        this.bus.emit('rom', 'state', msgpack.pack({hash: romHash, snapshot: msgpack.pack(snap)}))
+        this.logger.info(`> state ${romHash}`)
       }
-    }
-  }
-
-  // ROM Service Listeners
-  onRomConnect() {
-    this.logger.info('onRomConnect', this.romHash)
-    if (this.romHash) {
-      this.bus.emit('rom', 'query', this.romHash)
-    }
-  }
-
-  onRomDisconnect() {
-    this.logger.info('onRomDisconnect', this.romHash)
-    if (this.romHash) {
-      this.bus.emit('rom', 'query', this.romHash)
-    }
-  }
-
-  onRomData(data) {
-    const newRomHash = this.digest(data)
-    this.logger.info('onRomData', {romHash: newRomHash})
-    if (!this.romData || !this.romHash === newRomHash) {
-      this.romData = data
-      this.shouldStart()
-    }
-  }
-
-  onMove(data) {
-    this.logger.info('onMove', {data: data})
-  }
-
-  onRomState(state) {
-    this.logger.info('onRomState', {romHash: this.romHash})
-    this.romState = state
-    this.shouldStart()
-  }
-
-  onRomHash(hashData) {
-    this.logger.info('EmulatorService.onRomHash', hashData)
-    if (!this.romHash || !this.romHash === hashData.hash) {
-      this.romHash = hashData.hash
-      this.shouldStart()
     }
   }
 
@@ -314,7 +263,6 @@ class EmulatorService {
         current: this.romHash
       })
       if (!this.romHash) {
-        this.romHash = request
         this.bus.emit('rom', 'query', request)
         socket.join(this.romHash)
       } else if (this.romHash === request) {
