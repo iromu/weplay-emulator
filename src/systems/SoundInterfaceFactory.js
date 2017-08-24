@@ -75,7 +75,7 @@ class SoundInterface {
 
   toWavArrayBuffered(buffer) {
     this.tempAudioBuffer = this.tempAudioBuffer.concat(buffer)
-    if (this.toWavArrayBufferCount && this.toWavArrayBufferCount === 8) {
+    if (this.toWavArrayBufferCount && this.toWavArrayBufferCount >= 40) {
       const audioBuffer = pcm.toAudioBuffer(this.tempAudioBuffer, {
         channels: this.channels || 2,
         sampleRate: this.sampleRate || 44100,
