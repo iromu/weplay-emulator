@@ -1,7 +1,7 @@
-const Gameboy = require('./systems/Gameboy')
-const Nes = require('./systems/Nes')
+import Gameboy from './systems/Gameboy'
+import Nes from './systems/Nes'
 
-module.exports = {
+export default {
   getEmu: function getEmu(system) {
     let emu = new Gameboy()
     switch (system) {

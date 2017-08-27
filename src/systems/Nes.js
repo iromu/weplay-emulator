@@ -1,12 +1,12 @@
-const JSNES = require('node-nes')
-const Canvas = require('canvas')
-const Emitter = require('events').EventEmitter
-var stream = require('stream')
+import JSNES from 'node-nes'
+import Canvas from 'canvas'
+import {EventEmitter as Emitter} from 'events'
+import stream from 'stream'
+import PassUI from './PassUI'
 
-var PassUI = require('./PassUI')
-
-class Nes {
+class Nes extends Emitter {
   constructor() {
+    super()
     if (!(this instanceof Nes)) return new Nes()
     this.joyPadEventTimeoutByKey = {}
     this.canvas = new Canvas(256, 240)
@@ -82,7 +82,4 @@ class Nes {
   }
 }
 
-// eslint-disable-next-line no-proto
-Nes.prototype.__proto__ = Emitter.prototype
-
-module.exports = Nes
+export default Nes

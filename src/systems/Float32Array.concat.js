@@ -1,6 +1,7 @@
+/* eslint-disable no-extend-native,space-before-function-paren */
 Float32Array.prototype.concat = function () {
-  var bytesPerIndex = 4,
-    buffers = Array.prototype.slice.call(arguments)
+  var bytesPerIndex = 4
+  var buffers = Array.prototype.slice.call(arguments)
 
   // add self
   buffers.unshift(this)

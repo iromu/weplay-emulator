@@ -1,8 +1,3 @@
-const os = require('os')
-const crypto = require('crypto')
-const msgpack = require('msgpack')
-const fps = require('fps')
-
 class RomListeners {
   onRomConnect() {
     this.logger.info('onRomConnect', this.romHash)
@@ -46,4 +41,4 @@ class RomListeners {
   }
 }
 
-module.exports = RomListeners
+export default RomListeners

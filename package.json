@@ -4,15 +4,13 @@
   "description": "",
   "dependencies": {
     "audiobuffer-to-wav": "^1.0.0",
-    "babel-cli": "^6.24.1",
-    "babel-preset-es2015": "^6.24.1",
     "canvas": "^1.6.6",
     "debug": "^3.0.0",
     "fps": "0.0.3",
     "gameboy": "github:iromu/gameboy",
-    "node-nes": "github:iromu/node-nes",
     "memwatch-next": "^0.3.0",
     "msgpack": "1.0.2",
+    "node-nes": "github:iromu/node-nes",
     "pcm-util": "^3.0.0",
     "redis": "^2.7.1",
     "socket.io-emitter": "^3.0.1",
@@ -20,9 +18,16 @@
     "web-audio-api": "^0.2.2",
     "weplay-common": "github:iromu/weplay-common#develop"
   },
+  "devDependencies": {
+    "babel-cli": "^6.24.1",
+    "babel-preset-env": "^1.6.0"
+  },
   "scripts": {
-    "start": "WEPLAY_ROM=rom.gb node index.js",
-    "lint": "./node_modules/weplay-common/node_modules/.bin/eslint report ."
+    "start": "node build/index.js",
+    "start:dev": "babel-node src/index.js",
+    "lint": "./node_modules/weplay-common/node_modules/.bin/eslint report ./src",
+    "build": "babel src -d build",
+    "prepublish": "npm run build"
   },
   "engines": {
     "node": ">=8.0.0"

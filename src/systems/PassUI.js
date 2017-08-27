@@ -1,21 +1,21 @@
-var self
+let self
 
-const PassUI = function (nes) {
+const PassUI = (nes) => {
   this.nes = nes
   this.offscreenRGBCount = 256 * 240 * 4
-  this.enable = function () {
+  this.enable = () => {
   }
-  this.updateStatus = function () {
+  this.updateStatus = () => {
   }
-  this.writeAudio = function () {
+  this.writeAudio = () => {
   }
-  this.writeFrame = function (buffer, prevBuffer) {
+  this.writeFrame = (buffer, prevBuffer) => {
     this.drawContextOffscreen = self.canvas.getContext('2d')
     // Get a CanvasPixelArray buffer:
     try {
       this.canvasBuffer = this.drawContextOffscreen.createImageData(256, 240)
     } catch (error) {
-      console.log('Falling back to the getImageData initialization (Error "' + error.message + '").', 1)
+      console.log(`Falling back to the getImageData initialization (Error "${error.message}").`, 1)
       this.canvasBuffer = this.drawContextOffscreen.getImageData(0, 0, 256, 240)
     }
     // var canvasData = this.canvasBuffer.data
@@ -32,10 +32,10 @@ const PassUI = function (nes) {
     //   //  prevBuffer[i] = pixel
     //   //}
     // }
-    var canvasRGBALength = this.offscreenRGBCount
-    var canvasData = this.canvasBuffer.data
-    var bufferIndex = 0
-    for (var canvasIndex = 0; canvasIndex < canvasRGBALength; ++canvasIndex) {
+    const canvasRGBALength = this.offscreenRGBCount
+    const canvasData = this.canvasBuffer.data
+    let bufferIndex = 0
+    for (let canvasIndex = 0; canvasIndex < canvasRGBALength; ++canvasIndex) {
       canvasData[canvasIndex++] = buffer[bufferIndex++]
       canvasData[canvasIndex++] = buffer[bufferIndex++]
       canvasData[canvasIndex++] = buffer[bufferIndex++]
@@ -48,7 +48,7 @@ const PassUI = function (nes) {
   }
 }
 
-module.exports = {
+export default {
   get: function get(ref) {
     self = ref
     return PassUI

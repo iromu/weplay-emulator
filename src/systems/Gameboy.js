@@ -1,13 +1,13 @@
+import gameboy from 'gameboy'
+import Canvas from 'canvas'
+import {EventEmitter as Emitter} from 'events'
+import SoundInterfaceFactory from './SoundInterfaceFactory'
+
 require('./Float32Array.concat')
 
-const gameboy = require('gameboy')
-const Canvas = require('canvas')
-const Emitter = require('events').EventEmitter
-
-const SoundInterfaceFactory = require('./SoundInterfaceFactory')
-
-class Gameboy {
+class Gameboy extends Emitter {
   constructor() {
+    super()
     if (!(this instanceof Gameboy)) return new Gameboy()
     this.joyPadEventTimeoutByKey = {}
     this.canvas = new Canvas(160, 144)
@@ -81,7 +81,4 @@ class Gameboy {
   }
 }
 
-// eslint-disable-next-line no-proto
-Gameboy.prototype.__proto__ = Emitter.prototype
-
-module.exports = Gameboy
+export default Gameboy

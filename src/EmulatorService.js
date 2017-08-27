@@ -1,15 +1,11 @@
-// const path = require('path')
-// const fs = require('fs')
-
-const os = require('os')
-const crypto = require('crypto')
-const msgpack = require('msgpack')
-const fps = require('fps')
-const memwatch = require('memwatch-next')
-
-const EventBus = require('weplay-common').EventBus
-const RomListeners = require('./RomListeners')
-const EmulatorFactory = require('./EmulatorFactory')
+import os from 'os'
+import crypto from 'crypto'
+import msgpack from 'msgpack'
+import fps from 'fps'
+import memwatch from 'memwatch-next'
+import {EventBus, LoggerFactory} from 'weplay-common'
+import RomListeners from './RomListeners'
+import EmulatorFactory from './EmulatorFactory'
 
 const SAVE_INTERVAL_DELAY = process.env.WEPLAY_SAVE_INTERVAL || 60000
 const DESTROY_DELAY = 10000
@@ -18,7 +14,7 @@ const CHECK_INTERVAL = 2000
 class EmulatorService {
   constructor(discoveryUrl, discoveryPort, statusPort) {
     this.uuid = require('uuid/v1')()
-    this.logger = require('weplay-common').logger('weplay-emulator-service', this.uuid)
+    this.logger = LoggerFactory.get('weplay-emulator-service', this.uuid)
     memwatch.on('stats', (stats) => {
       this.logger.info('CompressorService stats', stats)
     })
@@ -48,7 +44,7 @@ class EmulatorService {
     this.bus = new EventBus({
       url: discoveryUrl,
       port: discoveryPort,
-      statusPort: statusPort,
+      statusPort,
       name: 'emu',
       id: this.uuid,
       serverListeners: {
@@ -70,7 +66,7 @@ class EmulatorService {
         {name: 'rom', event: 'state', handler: this.romListeners.onRomState.bind(this)}]
     }, () => {
       this.logger.info('EmulatorService connected to discovery server', {
-        discoveryUrl: discoveryUrl,
+        discoveryUrl,
         uuid: this.uuid
       })
       this.onConnect()
@@ -78,7 +74,7 @@ class EmulatorService {
   }
 
   gc() {
-    for (var room in this.roomsTimestamp) {
+    for (const room in this.roomsTimestamp) {
       if (this.isOlderThan(this.roomsTimestamp[room], CHECK_INTERVAL)) {
         if (room === this.romHash) {
           try {
@@ -114,7 +110,7 @@ class EmulatorService {
   }
 
   digest(state) {
-    var md5 = crypto.createHash('md5')
+    const md5 = crypto.createHash('md5')
     return md5.update(state).digest('hex')
   }
 
@@ -196,7 +192,7 @@ class EmulatorService {
     }
     if (this.romHash) {
       this.bus.emit('rom', 'free', this.romHash)
-      this.bus.destroyStream(this.romHash, 'frame' + this.romHash)
+      this.bus.destroyStream(this.romHash, `frame${this.romHash}`)
     }
     // if (request) {
     //   this.bus.emit('rom', 'free', request)
@@ -210,12 +206,12 @@ class EmulatorService {
   sendFrame(frame) {
     this.roomsTimestamp[this.romHash] = Date.now()
     this.ticker.tick()
-    this.bus.stream(this.romHash, 'frame' + this.romHash, frame)
+    this.bus.stream(this.romHash, `frame${this.romHash}`, frame)
   }
 
   sendAudio(audio) {
     this.roomsTimestamp[this.romHash] = Date.now()
-    this.bus.stream(this.romHash, 'audio' + this.romHash, audio)
+    this.bus.stream(this.romHash, `audio${this.romHash}`, audio)
   }
 
   saveState(romHash) {
@@ -292,4 +288,4 @@ class EmulatorService {
   }
 }
 
-module.exports = EmulatorService
+export default EmulatorService
