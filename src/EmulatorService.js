@@ -41,29 +41,32 @@ class EmulatorService {
     this.ticker.on('data', framerate => {
       this.logger.info('EmulatorService[%s] fps %s load %s mem %s free %s', this.romHash, Math.floor(framerate), os.loadavg().join('/'), os.totalmem(), os.freemem())
     })
+
+    const serverListeners = {
+      'move': (socket, request) => {
+        if (this.emu) {
+          this.emu.move(request)
+        }
+      },
+      'streamJoinRequested': this.streamJoinRequested.bind(this),
+      'streamCreateRequested': this.streamCreateRequested.bind(this),
+      'streamLeaveRequested': this.streamLeaveRequested.bind(this)
+    }
+    const clientListeners = [
+      {name: 'rom', event: 'connect', handler: this.romListeners.onRomConnect.bind(this)},
+      {name: 'rom', event: 'disconnect', handler: this.romListeners.onRomDisconnect.bind(this)},
+      {name: 'rom', event: 'data', handler: this.romListeners.onRomData.bind(this)},
+      {name: 'rom', event: 'hash', handler: this.romListeners.onRomHash.bind(this)},
+      {name: 'rom', event: 'state', handler: this.romListeners.onRomState.bind(this)}]
+
     this.bus = new EventBus({
       url: discoveryUrl,
       port: discoveryPort,
       statusPort,
       name: 'emu',
       id: this.uuid,
-      serverListeners: {
-        'move': (socket, request) => {
-          // console.log('move Request', request)
-          if (this.emu) {
-            this.emu.move(request)
-          }
-        },
-        'streamJoinRequested': this.streamJoinRequested.bind(this),
-        'streamCreateRequested': this.streamCreateRequested.bind(this),
-        'streamLeaveRequested': this.streamLeaveRequested.bind(this)
-      },
-      clientListeners: [
-        {name: 'rom', event: 'connect', handler: this.romListeners.onRomConnect.bind(this)},
-        {name: 'rom', event: 'disconnect', handler: this.romListeners.onRomDisconnect.bind(this)},
-        {name: 'rom', event: 'data', handler: this.romListeners.onRomData.bind(this)},
-        {name: 'rom', event: 'hash', handler: this.romListeners.onRomHash.bind(this)},
-        {name: 'rom', event: 'state', handler: this.romListeners.onRomState.bind(this)}]
+      serverListeners: serverListeners,
+      clientListeners: clientListeners
     }, () => {
       this.logger.info('EmulatorService connected to discovery server', {
         discoveryUrl,
@@ -96,11 +99,7 @@ class EmulatorService {
   }
 
   onConnect() {
-    // this.destroy()
     this.logger.info('EmulatorService init()')
-    // if (autoload) {
-    //   this.bus.emit('rom', 'request')
-    // }
   }
 
   shouldStart() {
@@ -186,18 +185,14 @@ class EmulatorService {
   destroyEmulator(request) {
     this.logger.debug('destroy emulator')
     if (this.saveInterval) clearInterval(this.saveInterval)
-    this.romHash && this.saveState()
-    if (this.emu) {
-      this.emu.destroy()
-    }
     if (this.romHash) {
+      this.saveState(this.romHash)
       this.bus.emit('rom', 'free', this.romHash)
       this.bus.destroyStream(this.romHash, `frame${this.romHash}`)
     }
-    // if (request) {
-    //   this.bus.emit('rom', 'free', request)
-    //   this.bus.destroyStream(request, 'frame' + request)
-    // }
+    if (this.emu) {
+      this.emu.destroy()
+    }
     this.romHash = null
     this.romState = null
     this.romData = null
