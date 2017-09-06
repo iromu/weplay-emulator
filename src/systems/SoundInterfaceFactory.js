@@ -50,7 +50,6 @@ class SoundInterface {
         samplesPerFrame: 1024
       })
       const arrayBuffer = toWav(audioBuffer)
-      console.log(buffer.length, arrayBuffer)
       self.emit('audio', arrayBuffer)
       this.toWavArrayBufferCount = 0
       this.tempAudioBuffer = new Float32Array()
