@@ -9,7 +9,6 @@ class Nes extends Emitter {
     super()
     if (!(this instanceof Nes)) return new Nes()
     this.joyPadEventTimeoutByKey = {}
-    this.canvas = new Canvas(256, 240)
     this.bufferStream = new stream.PassThrough()
     this.emitStream = new stream.PassThrough()
     this.emitStream.on('data', (data) => {
@@ -36,7 +35,7 @@ class Nes extends Emitter {
     // nes.ui.enabled()
     nes.isRunning = true //  not stopped
     // nes.ui.resetCanvas()
-    this.loop = setInterval(nes.frame.bind(nes), 8)
+    // this.loop = setInterval(nes.frame.bind(nes), 8)
     // const self = this
     // nes.on('draw', () => {
     //   self.canvas.toBuffer((err, buf) => {
@@ -74,10 +73,10 @@ class Nes extends Emitter {
   destroy() {
     if (this.destroyed) return this
     clearInterval(this.loop)
+    this.nes.stop()
     this.destroyed = true
     this.running = false
-    this.canvas = null
-    // this.nes = null
+    this.nes = null
     return this
   }
 }

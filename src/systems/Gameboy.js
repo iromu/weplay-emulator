@@ -12,7 +12,7 @@ class Gameboy extends Emitter {
     this.joyPadEventTimeoutByKey = {}
     this.canvas = new Canvas(160, 144)
     this.soundInterface = SoundInterfaceFactory.get(this)
-    this.gbOpts = {drawEvents: true, sound: this.soundInterface}
+    this.gbOpts = {drawEvents: true, sound: this.soundInterface, audioBufferMin: 100, audioBufferMax: 200}
   }
 
   initWithRom(rom) {
