@@ -23,6 +23,12 @@ pipeline {
          }
        }
 
+       stage('Test'){
+         steps {
+            sh 'yarn plato'
+         }
+       }
+
        stage('Archive'){
          steps {
             sh 'yarn pack'
