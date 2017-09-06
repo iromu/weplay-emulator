@@ -19,13 +19,21 @@
     "weplay-common": "github:iromu/weplay-common#develop"
   },
   "devDependencies": {
+    "es6-plato": "^1.0.14",
+    "eslint": "^4.3.0",
+    "eslint-config-standard": "^10.2.1",
+    "eslint-plugin-import": "^2.2.0",
+    "eslint-plugin-node": "^5.1.1",
+    "eslint-plugin-promise": "^3.5.0",
+    "eslint-plugin-standard": "^3.0.1",
     "babel-cli": "^6.24.1",
     "babel-preset-env": "^1.6.0"
   },
   "scripts": {
+    "lint": "eslint src",
+    "plato": "es6-plato -r -d report/plato src",
     "start": "node build/index.js",
     "start:dev": "babel-node src/index.js",
-    "lint": "./node_modules/weplay-common/node_modules/.bin/eslint report ./src",
     "build": "babel src -d build",
     "prepublish": "npm run build"
   },
