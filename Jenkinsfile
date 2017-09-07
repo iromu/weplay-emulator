@@ -25,6 +25,7 @@ pipeline {
 
        stage('Test'){
          steps {
+            sh 'yarn lint'
             sh 'yarn plato'
          }
        }
