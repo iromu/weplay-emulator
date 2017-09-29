@@ -1,10 +1,10 @@
-FROM iromu/weplay-common:arm
+FROM iromu/weplay-common:latest
 
 # Create app directory
 RUN mkdir -p /usr/src/app/emulator
 WORKDIR /usr/src/app/emulator
 
-COPY .. .
+COPY . .
 
 # Install build dependencies
 RUN apt-get update
