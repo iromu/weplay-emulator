@@ -38,6 +38,22 @@ pipeline {
          }
        }
 
+        stage('Docker arm'){
+          agent { label 'arm'  }
+          steps {
+              sh 'docker build --no-cache -t iromu/weplay-emulator-arm:latest . -f Dockerfile_arm'
+              sh 'docker push iromu/weplay-emulator-arm:latest'
+          }
+        }
+
+        stage('Docker amd64'){
+         agent { label 'docker'  }
+         steps {
+             sh 'docker build --no-cache -t iromu/weplay-emulator:latest . -f Dockerfile'
+             sh 'docker push iromu/weplay-emulator:latest'
+         }
+        }
+
        stage('Cleanup'){
          steps {
             cleanWs()
