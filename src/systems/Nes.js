@@ -1,5 +1,4 @@
 import JSNES from 'node-nes'
-import Canvas from 'canvas'
 import {EventEmitter as Emitter} from 'events'
 import stream from 'stream'
 import PassUI from './PassUI'
